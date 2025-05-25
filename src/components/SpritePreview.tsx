@@ -1,14 +1,15 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react';
 import { Sprite } from './SpritesheetExtractor';
-import { DownloadIcon, ZoomInIcon, ZoomOutIcon, Edit2Icon, SaveIcon, Eraser, XIcon, PencilIcon, CropIcon, UndoIcon, RedoIcon } from 'lucide-react';
+import { DownloadIcon, ZoomInIcon, ZoomOutIcon, Edit2Icon, SaveIcon, Eraser, XIcon, PencilIcon, CropIcon, UndoIcon, RedoIcon, PlusIcon } from 'lucide-react';
 import JSZip from 'jszip';
 
 interface SpritePreviewProps {
   sprites: Sprite[];
   originalImage: HTMLImageElement | null;
+  onAddSprite: (sprite: Sprite) => void;
 }
 
-export function SpritePreview({ sprites, originalImage }: SpritePreviewProps) {
+export function SpritePreview({ sprites, originalImage, onAddSprite }: SpritePreviewProps) {
   const [selectedSprite, setSelectedSprite] = useState<Sprite | null>(null);
   const [zoomLevel, setZoomLevel] = useState(1);
   const [isEditing, setIsEditing] = useState(false);
@@ -146,13 +147,13 @@ export function SpritePreview({ sprites, originalImage }: SpritePreviewProps) {
   }, [isErasing, saveCurrentState]);
 
   const handleCropMouseDown = useCallback((e: React.MouseEvent) => {
-    if (!isCropping || !imageRef.current) return;
+    if (!isCropping || !originalImage) return;
     
-    const rect = imageRef.current.getBoundingClientRect();
+    const rect = imageRef.current!.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    const scaleX = originalImage!.width / rect.width;
-    const scaleY = originalImage!.height / rect.height;
+    const scaleX = originalImage.width / rect.width;
+    const scaleY = originalImage.height / rect.height;
     const corners = [
       { x: cropBounds.x / scaleX, y: cropBounds.y / scaleY, corner: 'tl' },
       { x: (cropBounds.x + cropBounds.width) / scaleX, y: cropBounds.y / scaleY, corner: 'tr' },
@@ -175,15 +176,15 @@ export function SpritePreview({ sprites, originalImage }: SpritePreviewProps) {
   }, [isCropping, cropBounds, originalImage]);
 
   const handleCropMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!isDragging || !isCropping || !imageRef.current) return;
+    if (!isDragging || !isCropping || !originalImage || !imageRef.current) return;
     
     const rect = imageRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     const dx = x - dragStart.x;
     const dy = y - dragStart.y;
-    const scaleX = originalImage!.width / rect.width;
-    const scaleY = originalImage!.height / rect.height;
+    const scaleX = originalImage.width / rect.width;
+    const scaleY = originalImage.height / rect.height;
     
     if (dragCorner) {
       let newBounds = { ...cropBounds };
@@ -212,11 +213,10 @@ export function SpritePreview({ sprites, originalImage }: SpritePreviewProps) {
           newBounds.height += scaledDY;
           break;
       }
-      
       if (newBounds.width >= 10 && newBounds.height >= 10 &&
           newBounds.x >= 0 && newBounds.y >= 0 &&
-          newBounds.x + newBounds.width <= originalImage!.width &&
-          newBounds.y + newBounds.height <= originalImage!.height) {
+          newBounds.x + newBounds.width <= originalImage.width &&
+          newBounds.y + newBounds.height <= originalImage.height) {
         setCropBounds(newBounds);
       }
     } else {
@@ -224,8 +224,8 @@ export function SpritePreview({ sprites, originalImage }: SpritePreviewProps) {
       const newY = cropBounds.y + (dy * scaleY);
       
       if (newX >= 0 && newY >= 0 &&
-          newX + cropBounds.width <= originalImage!.width &&
-          newY + cropBounds.height <= originalImage!.height) {
+          newX + cropBounds.width <= originalImage.width &&
+          newY + cropBounds.height <= originalImage.height) {
         setCropBounds(prev => ({
           ...prev,
           x: newX,
@@ -263,13 +263,20 @@ export function SpritePreview({ sprites, originalImage }: SpritePreviewProps) {
           cropBounds.width,
           cropBounds.height
         );
-        selectedSprite.canvas = croppedCanvas;
-        selectedSprite.bounds = {
-          x: Math.round(cropBounds.x),
-          y: Math.round(cropBounds.y),
-          width: Math.round(cropBounds.width),
-          height: Math.round(cropBounds.height)
+        
+        const newSprite: Sprite = {
+          id: crypto.randomUUID(),
+          imageData: ctx.getImageData(0, 0, cropBounds.width, cropBounds.height),
+          canvas: croppedCanvas,
+          bounds: {
+            x: Math.round(cropBounds.x),
+            y: Math.round(cropBounds.y),
+            width: Math.round(cropBounds.width),
+            height: Math.round(cropBounds.height)
+          }
         };
+        
+        onAddSprite(newSprite);
       }
     } else if (canvasRef.current) {
       selectedSprite.canvas = canvasRef.current;
@@ -277,7 +284,8 @@ export function SpritePreview({ sprites, originalImage }: SpritePreviewProps) {
     
     setIsEditing(false);
     setIsCropping(false);
-  }, [selectedSprite, isCropping, cropBounds, originalImage]);
+    setSelectedSprite(null);
+  }, [selectedSprite, isCropping, cropBounds, originalImage, onAddSprite]);
   
   const downloadSprite = useCallback((sprite: Sprite, index: number) => {
     const name = spriteNames[sprite.id] || `sprite_${index}`;
@@ -294,6 +302,21 @@ export function SpritePreview({ sprites, originalImage }: SpritePreviewProps) {
   const zoomOut = useCallback(() => {
     setZoomLevel(prev => Math.max(prev - 0.5, 0.5));
   }, []);
+
+  const handleAddNewSprite = useCallback(() => {
+    if (!originalImage) return;
+    
+    const newSprite: Sprite = {
+      id: crypto.randomUUID(),
+      imageData: new ImageData(1, 1),
+      canvas: document.createElement('canvas'),
+      bounds: { x: 0, y: 0, width: 100, height: 100 }
+    };
+    
+    setSelectedSprite(newSprite);
+    setIsCropping(true);
+    setCropBounds({ x: 0, y: 0, width: 100, height: 100 });
+  }, [originalImage]);
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
@@ -345,6 +368,17 @@ export function SpritePreview({ sprites, originalImage }: SpritePreviewProps) {
           </div>
         </div>
       ))}
+      {originalImage && (
+        <div
+          className="bg-gray-50 dark:bg-gray-900 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-lg p-2 cursor-pointer hover:border-blue-500 dark:hover:border-blue-400 transition-colors"
+          onClick={handleAddNewSprite}
+        >
+          <div className="aspect-square flex flex-col items-center justify-center gap-2">
+            <PlusIcon className="w-8 h-8 text-gray-400 dark:text-gray-600" />
+            <span className="text-sm text-gray-600 dark:text-gray-400">Add Sprite</span>
+          </div>
+        </div>
+      )}
 
       {selectedSprite && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setSelectedSprite(null)}>
@@ -444,7 +478,7 @@ export function SpritePreview({ sprites, originalImage }: SpritePreviewProps) {
                         style={{ 
                           transform: `scale(${zoomLevel})`,
                           transformOrigin: 'center',
-                          cursor: 'none'
+                          cursor: isEditing ? 'none' : 'default'
                         }}
                         className="transition-transform relative"
                         onMouseDown={startErasing}

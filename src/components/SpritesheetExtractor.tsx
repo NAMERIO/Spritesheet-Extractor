@@ -31,6 +31,7 @@ export function SpritesheetExtractor() {
   
   const imageProcessor = useRef(new ImageProcessor());
   const imageContainerRef = useRef<HTMLDivElement>(null);
+  const imageRef = useRef<HTMLImageElement>(null);
   
   const handleImageUpload = useCallback((image: HTMLImageElement) => {
     setOriginalImage(image);
@@ -68,6 +69,10 @@ export function SpritesheetExtractor() {
     }
   }, [originalImage, processImage]);
 
+  const handleAddSprite = useCallback((newSprite: Sprite) => {
+    setSprites(prev => [...prev, newSprite]);
+  }, []);
+  
   const downloadAllAsZip = useCallback(async () => {
     const zip = new JSZip();
     
@@ -107,15 +112,22 @@ export function SpritesheetExtractor() {
                     className="relative border border-gray-300 dark:border-gray-700 rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-900"
                   >
                     <img 
+                      ref={imageRef}
                       src={originalImage.src} 
                       alt="Original spritesheet" 
                       className="max-w-full h-auto"
+                      onLoad={() => {
+                        if (imageContainerRef.current && imageRef.current) {
+                          const scale = imageRef.current.width / originalImage.width;
+                          imageContainerRef.current.style.setProperty('--scale', scale.toString());
+                        }
+                      }}
                     />
                     
                     <div className="absolute inset-0 pointer-events-none">
                       {sprites.map((sprite) => {
-                        const container = imageContainerRef.current;
-                        const scale = container ? container.offsetWidth / originalImage.width : 1;
+                        const scale = imageRef.current ? 
+                          imageRef.current.width / originalImage.width : 1;
                         
                         return (
                           <div
@@ -189,7 +201,11 @@ export function SpritesheetExtractor() {
           </div>
           
           <div className="p-6">
-            <SpritePreview sprites={sprites} originalImage={originalImage} />
+            <SpritePreview 
+              sprites={sprites} 
+              originalImage={originalImage}
+              onAddSprite={handleAddSprite}
+            />
           </div>
         </div>
       )}
