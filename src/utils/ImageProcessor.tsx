@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 export class ImageProcessor {
   async processImage(
     image: HTMLImageElement,
-    threshold = 128,
+    _threshold = 128,
     minSize = 20,
     padding = 1
   ): Promise<Sprite[]> {
@@ -21,41 +21,43 @@ export class ImageProcessor {
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const data = imageData.data;
     const mask = new Uint8Array(image.width * image.height);
-    const visited = new Uint8Array(image.width * image.height);
     for (let y = 0; y < image.height; y++) {
       for (let x = 0; x < image.width; x++) {
         const i = (y * image.width + x) * 4;
         const a = data[i + 3];
-        if (a > 2) {
+        if (a > 1) {
           mask[y * image.width + x] = 1;
         }
       }
     }
-    
-    const sprites: Sprite[] = [];
-    
-    const isSpriteBoundary = (x: number, y: number): boolean => {
-      const idx = y * image.width + x;
-      if (!mask[idx]) return false;
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
-          if (dx === 0 && dy === 0) continue;
-          
-          const nx = x + dx;
-          const ny = y + dy;
-          
-          if (nx >= 0 && nx < image.width && ny >= 0 && ny < image.height) {
-            const nidx = ny * image.width + nx;
-            if (!mask[nidx]) {
-              return true;
-            }
-          }
+    const emptyRows = new Set<number>();
+    const emptyCols = new Set<number>();
+    for (let y = 0; y < image.height; y++) {
+      let isEmpty = true;
+      for (let x = 0; x < image.width; x++) {
+        if (mask[y * image.width + x]) {
+          isEmpty = false;
+          break;
         }
       }
-      return false;
-    };
+      if (isEmpty) emptyRows.add(y);
+    }
+    for (let x = 0; x < image.width; x++) {
+      let isEmpty = true;
+      for (let y = 0; y < image.height; y++) {
+        if (mask[y * image.width + x]) {
+          isEmpty = false;
+          break;
+        }
+      }
+      if (isEmpty) emptyCols.add(x);
+    }
+    
+    const sprites: Sprite[] = [];
+    const visited = new Set<number>();
     const floodFill = (startX: number, startY: number) => {
       const stack: [number, number][] = [[startX, startY]];
+      const pixels = new Set<number>();
       const bounds = {
         minX: startX,
         minY: startY,
@@ -63,30 +65,32 @@ export class ImageProcessor {
         maxY: startY
       };
       
-      const pixels = new Set<number>();
-      
       while (stack.length > 0) {
         const [x, y] = stack.pop()!;
         const idx = y * image.width + x;
-        if (visited[idx] || !mask[idx]) continue;
-        visited[idx] = 1;
+        if (visited.has(idx) || !mask[idx]) continue;
+        visited.add(idx);
         pixels.add(idx);
         bounds.minX = Math.min(bounds.minX, x);
         bounds.minY = Math.min(bounds.minY, y);
         bounds.maxX = Math.max(bounds.maxX, x);
         bounds.maxY = Math.max(bounds.maxY, y);
-        for (let dy = -1; dy <= 1; dy++) {
-          for (let dx = -1; dx <= 1; dx++) {
-            if (dx === 0 && dy === 0) continue;
+        const neighbors = [
+          [-1, -1], [0, -1], [1, -1],
+          [-1, 0],           [1, 0],
+          [-1, 1],  [0, 1],  [1, 1]
+        ];
+        
+        for (const [dx, dy] of neighbors) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx >= 0 && nx < image.width && ny >= 0 && ny < image.height) {
+            const nidx = ny * image.width + nx;
+            if (dx !== 0 && emptyCols.has(x + Math.sign(dx))) continue;
+            if (dy !== 0 && emptyRows.has(y + Math.sign(dy))) continue;
             
-            const nx = x + dx;
-            const ny = y + dy;
-            
-            if (nx >= 0 && nx < image.width && ny >= 0 && ny < image.height) {
-              const nidx = ny * image.width + nx;
-              if (!visited[nidx] && mask[nidx]) {
-                stack.push([nx, ny]);
-              }
+            if (!visited.has(nidx) && mask[nidx]) {
+              stack.push([nx, ny]);
             }
           }
         }
@@ -97,10 +101,8 @@ export class ImageProcessor {
     for (let y = 0; y < image.height; y++) {
       for (let x = 0; x < image.width; x++) {
         const idx = y * image.width + x;
-        
-        if (!visited[idx] && mask[idx] && isSpriteBoundary(x, y)) {
+        if (!visited.has(idx) && mask[idx]) {
           const { bounds, pixels } = floodFill(x, y);
-          
           const width = bounds.maxX - bounds.minX + 1 + (padding * 2);
           const height = bounds.maxY - bounds.minY + 1 + (padding * 2);
           if (width < minSize || height < minSize) continue;

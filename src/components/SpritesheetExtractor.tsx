@@ -30,6 +30,7 @@ export function SpritesheetExtractor() {
   });
   
   const imageProcessor = useRef(new ImageProcessor());
+  const imageContainerRef = useRef<HTMLDivElement>(null);
   
   const handleImageUpload = useCallback((image: HTMLImageElement) => {
     setOriginalImage(image);
@@ -101,34 +102,40 @@ export function SpritesheetExtractor() {
                 <FileUploader onImageUpload={handleImageUpload} />
               ) : (
                 <div className="flex flex-col gap-4">
-                  <div className="relative border border-gray-300 dark:border-gray-700 rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-900">
+                  <div 
+                    ref={imageContainerRef}
+                    className="relative border border-gray-300 dark:border-gray-700 rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-900"
+                  >
                     <img 
                       src={originalImage.src} 
                       alt="Original spritesheet" 
                       className="max-w-full h-auto"
                     />
                     
-                    <svg className="absolute top-0 left-0 w-full h-full pointer-events-none">
-                      {sprites.map((sprite) => (
-                        <rect
-                          key={sprite.id}
-                          x={sprite.bounds.x}
-                          y={sprite.bounds.y}
-                          width={sprite.bounds.width}
-                          height={sprite.bounds.height}
-                          fill="none"
-                          stroke="rgba(59, 130, 246, 0.7)"
-                          strokeWidth="1"
-                          strokeDasharray="4 2"
-                        />
-                      ))}
-                    </svg>
+                    <div className="absolute inset-0 pointer-events-none">
+                      {sprites.map((sprite) => {
+                        const container = imageContainerRef.current;
+                        const scale = container ? container.offsetWidth / originalImage.width : 1;
+                        
+                        return (
+                          <div
+                            key={sprite.id}
+                            className="absolute border-2 border-blue-500/70 border-dashed"
+                            style={{
+                              left: `${sprite.bounds.x * scale}px`,
+                              top: `${sprite.bounds.y * scale}px`,
+                              width: `${sprite.bounds.width * scale}px`,
+                              height: `${sprite.bounds.height * scale}px`,
+                            }}
+                          />
+                        );
+                      })}
+                    </div>
                   </div>
                   
                   <div className="flex flex-wrap gap-2">
                     <button
                       onClick={() => setOriginalImage(null)}
-                      
                       className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors text-sm"
                     >
                       Upload new image
